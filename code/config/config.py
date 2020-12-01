@@ -6,8 +6,6 @@ from util.train_util import *
 from util.parameter_util import *
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
 parser = argparse.ArgumentParser(description='parameters')
 parser.add_argument('-e', '--epochs', type=int, dest='train_epochs', help='total train epochs', required=False, default=21)
 parser.add_argument('-b', '--batchsize', type=int, dest='batchsize', help='batch size', required=False, default=500)
@@ -60,8 +58,14 @@ print('result directory: ' + str(res_dir))
 
 if not test_mode:
     print("Constructing adj table...")
-    entity_adj_table, relation_adj_table, max_context_num, entity_A, relation_A = construct_adj_table(train_list, entity_total,
-                                                                                                      relation_total, max_context)
+    cache_file = os.path.join('cache', 'adj_table_{}_{}_{}_{}.pt'.format(dataset_v1, entity_total, relation_total, max_context ))
+    if os.path.exists(cache_file):
+        entity_adj_table, relation_adj_table, max_context_num, entity_A, relation_A = torch.load(cache_file)
+    else:
+        entity_adj_table, relation_adj_table, max_context_num, entity_A, relation_A = construct_adj_table(train_list, entity_total,
+                                                                                                        relation_total, max_context)
+        torch.save((entity_adj_table, relation_adj_table, max_context_num, entity_A, relation_A), cache_file)
+
     print("Constructing adj table completed.")
 
 

@@ -6,10 +6,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
+import numpy as np
 
 from config import online_config as config
 import test
+from transe import TransE, convert_dict_numpy
 
 # gpu_ids = [0, 1]
 
@@ -21,6 +22,7 @@ class DKGE_Online(nn.Module):
 
         # self.entity_emb = nn.Parameter(torch.Tensor(config.entity_total, config.dim))
         # self.relation_emb = nn.Parameter(torch.Tensor(config.relation_total, config.dim))
+        self.config = config
         self.entity_emb = nn.Embedding(config.entity_total, config.dim)
         self.relation_emb = nn.Embedding(config.relation_total, config.dim)
 
@@ -118,7 +120,7 @@ class DKGE_Online(nn.Module):
         return sg
 
     def gcn(self, A, H, target='entity'):
-        support = torch.matmul(A, H)
+        support = torch.bmm(A, H)
         if target == 'entity':
             output = F.relu(torch.matmul(support, self.entity_gcn_weight))
         elif target == 'relation':
@@ -128,6 +130,18 @@ class DKGE_Online(nn.Module):
     def save_parameters(self, parameter_path):
         if not os.path.exists(parameter_path):
             os.makedirs(parameter_path)
+
+        model = TransE(self.config.entity_total, relation_vocab_size= self.config.relation_total, 
+            hidden_size=self.config.dim)
+
+        model.ent_embeddings.weight.data.copy_(
+            torch.from_numpy(convert_dict_numpy( self.config.entity_total,
+                self.config.dim, self.pht_o)))
+        model.rel_embeddings.weight.data.copy_(
+            torch.from_numpy(convert_dict_numpy( self.config.relation_total,
+                self.config.dim, self.pr_o)))
+
+        torch.save( {'state_dict': model.state_dict()}, os.path.join(parameter_path, 'transe.ckpt'))
 
         ent_f = open(os.path.join(parameter_path, "entity_o"), "w")
         ent_f.write(json.dumps(self.pht_o))
@@ -265,6 +279,9 @@ def main():
             ph_A, pr_A, pt_A = config.get_batch_A(golden_triples, config.entity_A, config.relation_A)
             nh_A, nr_A, nt_A = config.get_batch_A(negative_triples, config.entity_A, config.relation_A)
 
+            ph_A, pr_A, pt_A = ph_A.cuda(), pr_A.cuda(), pt_A.cuda()
+            nh_A, nr_A, nt_A = nh_A.cuda(), nr_A.cuda(), nt_A.cuda()
+
             p_scores, n_scores = dynamicKGE(epoch, golden_triples, negative_triples, ph_A, pr_A, pt_A, nh_A, nr_A, nt_A)
             y = torch.Tensor([-1]).cuda()
             loss = criterion(p_scores, n_scores, y)
@@ -279,6 +296,9 @@ def main():
             dynamicKGE.relation_emb.weight.data[rel_emb_nochange_list] = relation_emb[rel_emb_nochange_list]
             dynamicKGE.entity_context.weight.data[ent_context_emb_nochange_list] = entity_context[ent_context_emb_nochange_list]
             dynamicKGE.relation_context.weight.data[rel_context_emb_nochange_list] = relation_context[rel_context_emb_nochange_list]
+
+        if epoch % 10 == 0:
+            dynamicKGE.save_parameters(config.res_dir)
 
         end_time = time.time()
         print('----------epoch avg loss: ' + str(epoch_avg_loss) + ' ----------')

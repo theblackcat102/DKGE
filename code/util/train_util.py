@@ -11,7 +11,8 @@ def read_file(file_name):
         for line in lines:
             li = line.split()
             if len(li) == 3:
-                data.append((int(li[0]), int(li[2]), int(li[1])))
+                # h, r, t
+                data.append((int(li[0]), int(li[1]), int(li[2])))
     return data
 
 
@@ -115,6 +116,7 @@ def construct_adj_table(train_list, entity_total, relation_total, max_context):
         h, r, t = train_data
         paths = find_relation_context(h, r, t, entity_adj_table_with_rel)
         relation_adj_table.setdefault(r, []).extend(paths)
+
     for k, v in relation_adj_table.items():
         relation_adj_table[k] = set([tuple(i) for i in v])
 
@@ -130,12 +132,12 @@ def construct_adj_table(train_list, entity_total, relation_total, max_context):
             res = res[:max_context_num]
             relation_adj_table[k] = set(res)
 
-    entity_DAD = torch.Tensor(entity_total, max_context_num + 1, max_context_num + 1).cuda()
-    relation_DAD = torch.Tensor(relation_total, max_context_num + 1, max_context_num + 1).cuda()
+    entity_DAD = torch.Tensor(entity_total, max_context_num + 1, max_context_num + 1)
+    relation_DAD = torch.Tensor(relation_total, max_context_num + 1, max_context_num + 1)
 
     for entity in range(entity_total):
-        A = torch.eye(max_context_num + 1, max_context_num + 1).cuda()
-        tmp = torch.ones(max_context_num + 1).cuda()
+        A = torch.eye(max_context_num + 1, max_context_num + 1)
+        tmp = torch.ones(max_context_num + 1)
         A[0, :max_context_num + 1] = tmp
         A[:max_context_num + 1, 0] = tmp
 
@@ -157,14 +159,14 @@ def construct_adj_table(train_list, entity_total, relation_total, max_context):
                         D[index+1][index+1] += 1
 
         D = np.linalg.inv(D)
-        D = torch.Tensor(D).cuda()
+        D = torch.Tensor(D)
         D[i, i] = torch.sqrt(D[i, i])
 
         entity_DAD[entity] = D.mm(A).mm(D)
 
     for relation in range(relation_total):
-        A = torch.eye(max_context_num + 1, max_context_num + 1).cuda()
-        tmp = torch.ones(max_context_num + 1).cuda()
+        A = torch.eye(max_context_num + 1, max_context_num + 1)
+        tmp = torch.ones(max_context_num + 1)
         A[0, :max_context_num + 1] = tmp
         A[:max_context_num + 1, 0] = tmp
 
@@ -188,7 +190,7 @@ def construct_adj_table(train_list, entity_total, relation_total, max_context):
                         A[index+1, index2+1] = 1
                         D[index+1][index+1] += 1
         D = np.linalg.inv(D)
-        D = torch.Tensor(D).cuda()
+        D = torch.Tensor(D)
         i = list(range(max_context_num + 1))
         D[i, i] = torch.sqrt(D[i, i])
 

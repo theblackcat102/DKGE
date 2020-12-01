@@ -8,8 +8,6 @@ from util.online_util import *
 from util.parameter_util import *
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
 parser = argparse.ArgumentParser(description='parameters')
 parser.add_argument('-e', '--epochs', type=int, dest='train_epochs', help='total train epochs', required=False, default=21)
 parser.add_argument('-b', '--batchsize', type=int, dest='batchsize', help='batch size', required=False, default=500)
@@ -62,14 +60,19 @@ print('bern: ' + str(bern))
 print('result directory: ' + str(res_dir))
 
 print("Constructing adj table...")
-entity_adj_table, relation_adj_table, max_context_num, entity_A, relation_A = construct_adj_table(train_list,
-                                                                                                  entity_total,
-                                                                                                  relation_total,
-                                                                                                  max_context)
+cache_file = os.path.join('cache', 'adj_table_{}_{}_{}_{}.pt'.format(dataset_v2, entity_total, relation_total, max_context ))
+if os.path.exists(cache_file):
+    entity_adj_table, relation_adj_table, max_context_num, entity_A, relation_A = torch.load(cache_file)
+else:
+    entity_adj_table, relation_adj_table, max_context_num, entity_A, relation_A = construct_adj_table(train_list,
+                                                                                                    entity_total,
+                                                                                                    relation_total,
+                                                                                                   max_context)
+    torch.save((entity_adj_table, relation_adj_table, max_context_num, entity_A, relation_A), cache_file)
 print("Constructing adj table completed.")
 
 
-def prepare_online_data(parameter_path):
+def prepare_stage1_data(parameter_path):
     print("Analysing snapshots...")
     affected_entities, affected_relations, \
     affected_triples, \
@@ -77,7 +80,7 @@ def prepare_online_data(parameter_path):
     entity_mapping_dict, relation_mapping_dict = analyse_snapshots(dataset_v1, dataset_v2)
     print("Analyse snapshots completed.")
 
-    print("Negatvie sampling...")
+    print("Negative sampling...")
     phs = np.zeros(len(affected_triples), dtype=int)
     prs = np.zeros(len(affected_triples), dtype=int)
     pts = np.zeros(len(affected_triples), dtype=int)
@@ -101,7 +104,31 @@ def prepare_online_data(parameter_path):
     nhs = torch.LongTensor(nhs).cuda()
     nrs = torch.LongTensor(nrs).cuda()
     nts = torch.LongTensor(nts).cuda()
-    print("Negatvie sampling finished.")
+    print("Negative sampling finished.")
+    return phs, prs, pts, nhs, nrs, nts, \
+        affected_entities, affected_relations, \
+        added_entities, added_relations, \
+        entity_mapping_dict, relation_mapping_dict
+
+
+def prepare_online_data(parameter_path):
+
+    cache_file = os.path.join('cache', 'training_data_{}_{}_{}_{}.pt'.format(dataset_v2.replace('/', ''), 
+        entity_total, relation_total, max_context ))
+
+    if os.path.exists(cache_file):
+        phs, prs, pts, nhs, nrs, nts, \
+            affected_entities, affected_relations, \
+            added_entities, added_relations, \
+            entity_mapping_dict, relation_mapping_dict = torch.load(cache_file)
+    else:
+        phs, prs, pts, nhs, nrs, nts, \
+            affected_entities, affected_relations, \
+            added_entities, added_relations, \
+            entity_mapping_dict, relation_mapping_dict = prepare_stage1_data(parameter_path)
+        torch.save((phs, prs, pts, nhs, nrs, nts, \
+            affected_entities, affected_relations, added_entities, \
+            added_relations, entity_mapping_dict, relation_mapping_dict), cache_file)
 
     entity_emb, relation_emb, entity_context, relation_context, \
     entity_gcn_weight, relation_gcn_weight, gate_entity, gate_relation, \
@@ -143,4 +170,3 @@ def prepare_online_data(parameter_path):
            entity_gcn_weight, relation_gcn_weight, gate_entity, gate_relation, v_entity, v_relation, \
            phs, prs, pts, nhs, nrs, nts, affected_entities, affected_relations, added_entities, added_relations, \
            new_entity_o_emb, new_relation_o_emb
-
