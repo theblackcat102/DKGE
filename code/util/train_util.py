@@ -2,6 +2,10 @@ import random
 import torch
 import torch.nn as nn
 import numpy as np
+from tqdm import tqdm
+from multiprocessing import Pool
+from collections import defaultdict
+from torch.utils.data import Dataset
 
 
 def read_file(file_name):
@@ -100,23 +104,34 @@ def find_relation_context(h, r, t, entity_adj_table_with_rel):
     tail_ent2paths = get_1or2_path_from_head(h, r, entity_adj_table_with_rel)
     return tail_ent2paths.get(t, [])
 
+def find_relation_context_parallel(params):
+    h, r, t, entity_adj_table_with_rel = params
+    tail_ent2paths = get_1or2_path_from_head(h, r, entity_adj_table_with_rel)
+    return (r, tail_ent2paths.get(t, []))    
 
 def construct_adj_table(train_list, entity_total, relation_total, max_context):
     entity_adj_table_with_rel = dict()  # {head_entity: [(tail_entity, relation)]}
     entity_adj_table = dict()  # {head_entity: [tail_entity]}
-    relation_adj_table = dict()  # {relation: [[edge]]}
-
+    relation_adj_table = defaultdict(list)  # {relation: [[edge]]}
     for train_data in train_list:
         h, r, t = train_data
         entity_adj_table.setdefault(h, set()).add(t)
         entity_adj_table.setdefault(t, set()).add(h)
         entity_adj_table_with_rel.setdefault(h, list()).append((t, r))
 
-    for train_data in train_list:
+    print('construct_adj_table')
+    # with Pool(20) as pool:
+    #     for (r, paths) in tqdm(pool.imap_unordered(find_relation_context_parallel, [ (h, r, t, entity_adj_table_with_rel)  for (h, r, t) in train_list])):
+    #         # relation_adj_table.setdefault(r, []).extend(paths)
+    #         relation_adj_table[r] += paths
+
+    for data in tqdm(train_list):
         h, r, t = train_data
         paths = find_relation_context(h, r, t, entity_adj_table_with_rel)
-        relation_adj_table.setdefault(r, []).extend(paths)
+        # relation_adj_table.setdefault(r, []).extend(paths)
+        relation_adj_table[r] += paths
 
+    print('finish adj table build')
     for k, v in relation_adj_table.items():
         relation_adj_table[k] = set([tuple(i) for i in v])
 
@@ -131,7 +146,7 @@ def construct_adj_table(train_list, entity_total, relation_total, max_context):
             res = list(v)
             res = res[:max_context_num]
             relation_adj_table[k] = set(res)
-
+    print('setup DAD')
     entity_DAD = torch.Tensor(entity_total, max_context_num + 1, max_context_num + 1)
     relation_DAD = torch.Tensor(relation_total, max_context_num + 1, max_context_num + 1)
 
@@ -163,6 +178,7 @@ def construct_adj_table(train_list, entity_total, relation_total, max_context):
         D[i, i] = torch.sqrt(D[i, i])
 
         entity_DAD[entity] = D.mm(A).mm(D)
+    print('setup relation adj')
 
     for relation in range(relation_total):
         A = torch.eye(max_context_num + 1, max_context_num + 1)
@@ -284,3 +300,63 @@ def get_batch(batch_size, batch, epoch, phs, prs, pts, nhs, nrs, nts):
 def get_batch_A(triples, entity_A, relation_A):
     h, r, t = triples
     return entity_A[h.cpu().numpy()], relation_A[r.cpu().numpy()], entity_A[t.cpu().numpy()]
+
+
+
+class GraphDataSet(Dataset):
+
+    def __init__(self, cache_file, data_path):
+        from models import Mapping
+        phs, prs, pts, nhs, nrs, nts = torch.load(cache_file)
+        del nhs, nrs, nts
+
+        if phs.is_cuda:
+            print('move to cpu')
+            phs = phs.cpu()
+            prs = prs.cpu()
+            pts = pts.cpu()
+
+        self.mapping = Mapping(data_path)
+        self.phs = phs
+        self.prs = prs
+        self.pts = pts
+        self.entity_size = max(phs.max(), pts.max())
+
+    def sample_negative(self, h, r, t):
+        replace_head = random.random() > 0.5
+        tmp = random.randint(0, self.entity_size-1)
+        while tmp == h or tmp == r:
+            tmp = random.randint(0, self.entity_size-1)
+        if replace_head:
+            return torch.IntTensor([tmp])[0].to(r.device), r, t
+        return h, r, torch.IntTensor([tmp])[0].to(r.device)
+
+
+    def __len__(self):
+        return len(self.prs)
+    
+    def __getitem__(self, index):
+        h, r, t = self.phs[index], self.prs[index], self.pts[index]
+        nh, nr, nt = self.sample_negative(h, r, t)
+        return {
+            'h': h,
+            'r': r,
+            't': t,
+            'nh': nh,
+            'nr': nr,
+            'nt': nt,
+            'h_tokens': torch.from_numpy(np.array(self.mapping.get_entity(int(h)))), 
+            'r_tokens': torch.from_numpy(np.array(self.mapping.get_relation(int(r)))),
+            't_tokens': torch.from_numpy(np.array(self.mapping.get_entity(int(t)))),
+            'nh_tokens': torch.from_numpy(np.array(self.mapping.get_entity(int(nh)))), 
+            'nr_tokens': torch.from_numpy(np.array(self.mapping.get_relation(int(nr)))),
+            'nt_tokens': torch.from_numpy(np.array(self.mapping.get_entity(int(nt)))),
+        }
+
+
+if __name__ == '__main__':
+    from torch.utils.data import DataLoader
+    dataset = GraphDataSet('cache/training_data_FB15K-237-2snapshot1_14055_236_30.pt', 'data/FB15K-237-2/snapshot1')
+    dataloader = DataLoader(dataset, batch_size=32)
+    for batch in dataloader:
+        print(batch['h'].shape)

@@ -66,6 +66,16 @@ if not test_mode:
                                                                                                         relation_total, max_context)
         torch.save((entity_adj_table, relation_adj_table, max_context_num, entity_A, relation_A), cache_file)
 
+    entity_adj_matrix = [[ entity_total ]*max_context  ]*entity_total
+    for key, adj_entities in entity_adj_table.items():
+        entity_adj_matrix[key][:len(adj_entities)] = adj_entities
+    entity_adj_table = np.array(entity_adj_matrix)
+
+    relation_adj_matrix = [[ relation_total ]*max_context  ]*relation_total
+    for key, adj_entities in relation_adj_table.items():
+        relation_adj_matrix[key] = adj_entities[:max_context]
+    relation_adj_table = np.array(relation_adj_matrix)
+
     print("Constructing adj table completed.")
 
 
