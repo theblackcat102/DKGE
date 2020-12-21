@@ -7,6 +7,7 @@ from util.parameter_util import *
 
 
 parser = argparse.ArgumentParser(description='parameters')
+parser.add_argument('--name', type=str,help="training session", required=True, default='dkge')
 parser.add_argument('-e', '--epochs', type=int, dest='train_epochs', help='total train epochs', required=False, default=21)
 parser.add_argument('-b', '--batchsize', type=int, dest='batchsize', help='batch size', required=False, default=500)
 parser.add_argument('-m', '--margin', type=float, dest='margin', help='margin', required=False, default=10.0)
@@ -16,11 +17,14 @@ parser.add_argument('-n', '--norm', type=int, dest="norm", help="normalization",
 parser.add_argument('-o', '--optim', type=str, dest="optim", help="optimizer", required=False, default="SGD")
 parser.add_argument('-p', '--path', type=str, dest="dataset", help="dataset path", required=False, default="YAGO-3SP/snapshot1")
 parser.add_argument('-t', '--test_mode', type=bool, dest="test_mode", help="if test mode on", required=False, default=False)
+parser.add_argument('-k', '--use_embedding', type=bool, dest="use_embedding", help="use individual embedding", required=False, default=False)
+
 args = parser.parse_args()
 
 
 dataset_v1 = args.dataset
 
+use_embedding = args.use_embedding
 entity_total = get_total(file_name='./data/' + dataset_v1 + '/entity2id.txt')
 relation_total = get_total(file_name='./data/' + dataset_v1 + '/relation2id.txt')
 entity_set = set(range(entity_total))

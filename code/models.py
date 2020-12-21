@@ -19,8 +19,10 @@ class Mapping():
         self.training = True
         with open(os.path.join(datapath, 'entity2wikidata.json'), 'r') as f:
             self.entity2wiki = json.load(f)
+
         with open(os.path.join(datapath, 'relation2wikidata.json'), 'r') as f:
             self.relation2wiki = json.load(f)
+
         self.relation2wiki['[UNK]'] = {
             'label': '[UNK]',
             'alternatives':[],
@@ -55,7 +57,9 @@ class Mapping():
         if not self.training:
             name = self.entity2wiki[entity_id]['label']
         else:
-            name = random.choice([self.entity2wiki[entity_id]['label']]+self.entity2wiki[entity_id]['alternatives'])
+            name = random.choice([self.entity2wiki[entity_id]['label']]+\
+                self.entity2wiki[entity_id]['alternatives'])
+
         token_ids = self.tokenizer.encode(name).ids[:EMBED_MAX_LENGTH]
         token_ids += [self.pad_token_id]*max( EMBED_MAX_LENGTH-len(token_ids),  0)
         return token_ids
@@ -65,13 +69,12 @@ class Mapping():
         if not self.training:
             name = self.relation2wiki[rel_id]['label']
         else:
-            name = random.choice([self.relation2wiki[rel_id]['label']]+self.relation2wiki[rel_id]['alternatives'])
+            name = random.choice([self.relation2wiki[rel_id]['label']]+\
+                self.relation2wiki[rel_id]['alternatives'])
         
         token_ids = self.tokenizer.encode(name).ids[:EMBED_MAX_LENGTH]
         token_ids += [self.pad_token_id]*max( EMBED_MAX_LENGTH-len(token_ids),  0)
         return token_ids
-
-
 
 class DynamicKGE(nn.Module):
 
@@ -81,12 +84,19 @@ class DynamicKGE(nn.Module):
         self.rel_id2tokens = rel_id2tokens
         self.config = config
         # sub token embedding
-        self.entity_emb = nn.Embedding(EMBED_MAX_SIZE, config.dim)
-        self.ent_offset = nn.Parameter(torch.Tensor(config.dim))
+        self.use_embedding = config.use_embedding
+        if self.use_embedding:
+            self.ent_embed = nn.Embedding(config.entity_total+1, config.dim)
+            self.context_ent_embed = nn.Embedding(config.entity_total+1, config.dim)
 
-        self.rel_offset = nn.Parameter(torch.Tensor(config.dim))
-        # neighbour token embedding
-        self.context_emb = nn.Embedding(EMBED_MAX_SIZE, config.dim)
+            self.rel_embed = nn.Embedding(config.relation_total+1, config.dim)
+            self.context_rel_embed = nn.Embedding(config.relation_total+1, config.dim)
+        else:
+            self.word_token_emb = nn.Embedding(EMBED_MAX_SIZE, config.dim)
+            self.ent_offset = nn.Linear(config.dim, config.dim)
+            self.rel_offset = nn.Linear(config.dim, config.dim)
+            # neighbour token embedding
+            self.context_emb = nn.Embedding(EMBED_MAX_SIZE, config.dim)
 
         self.entity_gcn_weight = nn.Parameter(torch.Tensor(config.dim, config.dim))
         self.relation_gcn_weight = nn.Parameter(torch.Tensor(config.dim, config.dim))
@@ -103,10 +113,14 @@ class DynamicKGE(nn.Module):
         self._init_parameters()
 
     def _init_parameters(self):
-        nn.init.xavier_uniform_(self.entity_emb.weight)
-        nn.init.xavier_uniform_(self.context_emb.weight)
-        nn.init.uniform_(self.rel_offset.data)
-        nn.init.uniform_(self.ent_offset.data)
+        if self.use_embedding:
+            nn.init.xavier_uniform_(self.ent_embed.weight)
+            nn.init.xavier_uniform_(self.rel_embed.weight)
+            nn.init.xavier_uniform_(self.context_ent_embed.weight)
+            nn.init.xavier_uniform_(self.context_rel_embed.weight)
+        else:
+            nn.init.xavier_uniform_(self.word_token_emb.weight)
+            nn.init.xavier_uniform_(self.context_emb.weight)
 
         nn.init.uniform_(self.gate_entity.data)
         nn.init.uniform_(self.gate_relation.data)
@@ -123,7 +137,6 @@ class DynamicKGE(nn.Module):
         return torch.norm(h + r - t, p=self.config.norm, dim=1)
 
     def get_entity_context(self, entities):
-
         if entities.device != 'cpu':
             entities_index = entities.cpu().numpy()
         else:
@@ -141,28 +154,35 @@ class DynamicKGE(nn.Module):
 
     def get_adj_entity_vec(self, entity_vec_list, adj_entity_list, device):
         # adj node
-        adj_entity_tokens = self.entity_id2tokens[adj_entity_list]
-        adj_entity_tokens = adj_entity_tokens.to(device)
-        adj_entity_vec_list = self.context_emb(adj_entity_tokens)+self.ent_offset
+        if self.use_embedding:
+            adj_entity_vec_list = self.context_ent_embed(adj_entity_list.to(device))
+            entity_vec_list = self.context_ent_embed(entity_vec_list.to(device))
+        else:
+            adj_entity_tokens = self.entity_id2tokens[adj_entity_list]
+            adj_entity_tokens = adj_entity_tokens.to(device)
+            adj_entity_vec_list = self.context_emb(adj_entity_tokens)
+            adj_entity_vec_list = self.ent_offset(adj_entity_vec_list.mean(-2))
 
-        adj_entity_vec_list = adj_entity_vec_list.mean(-2)
-        # self node
-        entity_vec_list = self.entity_id2tokens[entity_vec_list.long()].to(device)
+            # self node            
+            entity_vec_list = self.entity_id2tokens[entity_vec_list.long()].to(device)
+            entity_vec_list = self.word_token_emb(entity_vec_list)
+            entity_vec_list = self.ent_offset(entity_vec_list.mean(1))
 
-        entity_vec_list = self.entity_emb(entity_vec_list)+self.ent_offset
-        entity_vec_list = entity_vec_list.mean(1)
         return torch.cat((entity_vec_list.unsqueeze(1), adj_entity_vec_list), dim=1)
 
     def get_adj_relation_vec(self, relation_vec_list, adj_relation_list, device):
         # adj node
-
-        adj_relation_tokens = self.rel_id2tokens[adj_relation_list].to(device)
-        adj_relation_vec_list = self.context_emb(adj_relation_tokens)+self.rel_offset
-        adj_relation_vec_list = adj_relation_vec_list.mean(-2)
-        # self node
-        relation_vec_list = self.rel_id2tokens[relation_vec_list.long()].to(device)
-        relation_vec_list = self.entity_emb(relation_vec_list)+self.rel_offset
-        relation_vec_list = relation_vec_list.mean(1)
+        if self.use_embedding:
+            adj_relation_vec_list = self.context_rel_embed(adj_relation_list.to(device))
+            relation_vec_list = self.rel_embed(relation_vec_list.to(device))
+        else:
+            adj_relation_tokens = self.rel_id2tokens[adj_relation_list].to(device)
+            adj_relation_vec_list = self.context_emb(adj_relation_tokens)
+            adj_relation_vec_list = self.rel_offset(adj_relation_vec_list.mean(-2))
+            # self node
+            relation_vec_list = self.rel_id2tokens[relation_vec_list.long()].to(device)
+            relation_vec_list = self.word_token_emb(relation_vec_list)
+            relation_vec_list = self.rel_offset(relation_vec_list.mean(1))
         return torch.cat((relation_vec_list.unsqueeze(1), adj_relation_vec_list), dim=1)
 
     def score(self, o, adj_vec_list, target='entity'):
@@ -216,6 +236,7 @@ class DynamicKGE(nn.Module):
         model.ent_embeddings.weight.data.copy_(
             torch.from_numpy(convert_dict_numpy( self.config.entity_total,
                 self.config.dim, self.pht_o)))
+
         model.rel_embeddings.weight.data.copy_(
             torch.from_numpy(convert_dict_numpy( self.config.relation_total,
                 self.config.dim, self.pr_o)))
@@ -230,11 +251,14 @@ class DynamicKGE(nn.Module):
         torch.save(self.state_dict(), 'all_parameters.pt')
 
     def compute_entity(self, ent_id, A):
-        ent_tokens = self.entity_id2tokens[ent_id.long()]
-        ent_tokens = ent_tokens.to(A.device)
-        ent_id = ent_id.to(A.device)
+        ent_id = ent_id.long()
 
-        embedding = (self.entity_emb(ent_tokens)+ self.ent_offset).mean(1)
+        if self.use_embedding:
+            embedding = self.ent_embed(ent_id.to(A.device))
+        else:
+            ent_tokens = self.entity_id2tokens[ent_id.to(A.device)]
+            ent_tokens = ent_tokens.to(A.device)
+            embedding = self.ent_offset(self.word_token_emb(ent_tokens).mean(1))
 
         adj_entity_list = self.get_entity_context(ent_id)
         adj_entity_vec_list = self.get_adj_entity_vec(ent_id, adj_entity_list, device=A.device)
@@ -244,17 +268,22 @@ class DynamicKGE(nn.Module):
         o = torch.mul(F.sigmoid(self.gate_entity), embedding) + torch.mul(1 - F.sigmoid(self.gate_entity), ent_sg)
         return o
 
-    def compute_relation(self, ent_id, A):
-        ent_tokens = self.rel_id2tokens[ent_id.long()].to(A.device)
+    def compute_relation(self, rel_id, A):
+        rel_id = rel_id.long()
 
-        embedding = (self.entity_emb(ent_tokens)+ self.rel_offset).mean(1) 
+        if self.use_embedding:
+            embedding = self.rel_embed(rel_id.to(A.device))
 
-        adj_entity_list = self.get_relation_context(ent_id)
-        adj_entity_vec_list = self.get_adj_relation_vec(ent_id, adj_entity_list, A.device)
-        gcn_adj_entity_vec_list = self.gcn(A, adj_entity_vec_list, target='entity')
+        else:
+            ent_tokens = self.rel_id2tokens[rel_id].to(A.device)
+            embedding = self.rel_offset(self.word_token_emb(ent_tokens).mean(1))
 
-        ent_sg = self.calc_subgraph_vec(embedding, gcn_adj_entity_vec_list)
-        o = torch.mul(F.sigmoid(self.gate_entity), embedding) + torch.mul(1 - F.sigmoid(self.gate_entity), ent_sg)
+        adj_rel_list = self.get_relation_context(rel_id)
+        adj_rel_vec_list = self.get_adj_relation_vec(rel_id, adj_rel_list, A.device)
+        gcn_adj_rel_vec_list = self.gcn(A, adj_rel_vec_list, target='relation')
+
+        ent_sg = self.calc_subgraph_vec(embedding, gcn_adj_rel_vec_list)
+        o = torch.mul(F.sigmoid(self.gate_relation), embedding) + torch.mul(1 - F.sigmoid(self.gate_relation), ent_sg)
         return o
 
 
@@ -267,6 +296,7 @@ class DynamicKGE(nn.Module):
         pt_o = self.compute_entity(pos_t, pt_A)
         nh_o = self.compute_entity(neg_h, nh_A)
         nt_o = self.compute_entity(neg_t, nt_A)
+
         pr_o = self.compute_relation(pos_r, pr_A)
         nr_o = self.compute_relation(neg_r, nt_A)
 
@@ -302,7 +332,12 @@ if __name__ == '__main__':
     relation_adj_table = np.array(relation_adj_matrix)
     entity_id2tokens = dataset.mapping.entity2tokens
     rel_id2tokens = dataset.mapping.relations2tokens
-    config = Namespace(dim=256, entity_total=14055, max_context_num=30, entity_adj_table=entity_adj_table, relation_adj_table=relation_adj_table, norm=6)
+    config = Namespace(dim=256, entity_total=14055, 
+        relation_total=299,
+        max_context_num=30, 
+        entity_adj_table=entity_adj_table, 
+        relation_adj_table=relation_adj_table, 
+        norm=6, use_embedding=True)
     model = DynamicKGE(config, entity_id2tokens, rel_id2tokens)
     model = model.cuda()
     for batch in dataloader:

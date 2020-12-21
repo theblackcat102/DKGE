@@ -15,6 +15,14 @@ import time
 from models import DynamicKGE
 from tqdm import tqdm
 from util.train_util import get_batch_A, GraphDataSet
+from tensorboardX import SummaryWriter
+
+def evaluate(config):
+
+    entity_emb, relation_emb = load_o_emb(config.res_dir, config.entity_total, config.relation_total, config.dim)
+    print('test link prediction starting...')
+    test.test_link_prediction(config.test_list, set(config.train_list), entity_emb, relation_emb, config.norm)
+    print('test link prediction ending...')
 
 
 def main():
@@ -39,8 +47,12 @@ def main():
     entity_id2tokens = dataset.mapping.entity2tokens
     rel_id2tokens = dataset.mapping.relations2tokens
     dynamicKGE = DynamicKGE(config, entity_id2tokens, rel_id2tokens)
-    dynamicKGE = dynamicKGE.cuda()
+ 
+    if config.test_mode:
+        evaluate(config)
+        exit(0)
 
+    dynamicKGE = dynamicKGE.cuda()
 
     if config.optimizer == "SGD":
         optimizer = optim.SGD(dynamicKGE.parameters(), lr=config.learning_rate)
@@ -55,7 +67,10 @@ def main():
         optimizer = optim.SGD(dynamicKGE.parameters(), lr=config.learning_rate)
 
     criterion = nn.MarginRankingLoss(config.margin, False).cuda()
-    dynamicKGE.save_parameters(config.res_dir)
+
+    os.makedirs(os.path.join('logging', config.dataset_v1), exist_ok=True)
+    writer = SummaryWriter(os.path.join('logging', config.args.name))
+    step = 0
 
     for epoch in range(config.train_times):
         start_time = time.time()
@@ -84,6 +99,8 @@ def main():
                 optimizer.step()
 
                 epoch_avg_loss += (float(loss.item()) / config.nbatchs)
+                writer.add_scalar('loss', loss.item(), step)
+                step += 1
                 pbar.set_description("loss={:.2f}".format(loss.item()/ config.nbatchs ))
                 pbar.update(1)
 
@@ -95,14 +112,8 @@ def main():
         print('----------epoch avg loss: ' + str(epoch_avg_loss) + ' ----------')
         print('----------epoch training time: ' + str(end_time-start_time) + ' s --------\n')
 
-
-    dynamicKGE.save_parameters(config.res_dir)
     print('train ending...')
+    dynamicKGE.save_parameters(config.res_dir)
 
-    entity_emb, relation_emb = load_o_emb(config.res_dir, config.entity_total, config.relation_total, config.dim)
-    print('test link prediction starting...')
-    test.test_link_prediction(config.test_list, set(config.train_list), entity_emb, relation_emb, config.norm)
-    print('test link prediction ending...')
-
-
+    evaluate(config)
 main()
