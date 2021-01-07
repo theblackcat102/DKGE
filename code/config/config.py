@@ -18,6 +18,7 @@ parser.add_argument('-o', '--optim', type=str, dest="optim", help="optimizer", r
 parser.add_argument('-p', '--path', type=str, dest="dataset", help="dataset path", required=False, default="YAGO-3SP/snapshot1")
 parser.add_argument('-t', '--test_mode', type=bool, dest="test_mode", help="if test mode on", required=False, default=False)
 parser.add_argument('-k', '--use_embedding', type=bool, dest="use_embedding", help="use individual embedding", required=False, default=False)
+parser.add_argument('-c', '--max_context', type=int, dest="max_context", help="max context", required=False, default=30)
 
 args = parser.parse_args()
 
@@ -38,7 +39,7 @@ print('relation_total: ' + str(relation_total))
 print('train_total: ' + str(len(train_list)))
 print('test_total: ' + str(len(test_list)))
 
-max_context = 30
+max_context = args.max_context
 train_times = args.train_epochs
 learning_rate = args.learning_rate
 batch_size = args.batchsize

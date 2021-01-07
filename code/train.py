@@ -17,11 +17,11 @@ from tqdm import tqdm
 from util.train_util import get_batch_A, GraphDataSet
 from tensorboardX import SummaryWriter
 
-def evaluate(config):
+def evaluate(config, verbose=0):
 
-    entity_emb, relation_emb = load_o_emb(config.res_dir, config.entity_total, config.relation_total, config.dim)
+    entity_emb, relation_emb = load_o_emb(config.res_dir, config.entity_total, config.relation_total, config.dim, input=True)
     print('test link prediction starting...')
-    test.test_link_prediction(config.test_list, set(config.train_list), entity_emb, relation_emb, config.norm)
+    test.test_link_prediction(config.test_list, set(config.train_list), entity_emb, relation_emb, config.norm, verbose=verbose)
     print('test link prediction ending...')
 
 
@@ -42,8 +42,8 @@ def main():
     dataset = GraphDataSet(cache_file, os.path.join('data',  config.dataset_v1))
     dataloader = DataLoader(dataset, 
         batch_size=config.batch_size, 
-        num_workers=10)
-    
+        num_workers=0, drop_last=True, shuffle=True)
+
     entity_id2tokens = dataset.mapping.entity2tokens
     rel_id2tokens = dataset.mapping.relations2tokens
     dynamicKGE = DynamicKGE(config, entity_id2tokens, rel_id2tokens)
@@ -68,10 +68,10 @@ def main():
 
     criterion = nn.MarginRankingLoss(config.margin, False).cuda()
 
-    os.makedirs(os.path.join('logging', config.dataset_v1), exist_ok=True)
+    os.makedirs(os.path.join('logging', config.args.name))
     writer = SummaryWriter(os.path.join('logging', config.args.name))
     step = 0
-
+    first_evaluate = True
     for epoch in range(config.train_times):
         start_time = time.time()
         print('----------training the ' + str(epoch) + ' epoch----------')
@@ -81,7 +81,7 @@ def main():
 
                 golden_triples = ( batch['h'], batch['r'], batch['t'])
                 golden_triples = [t.cuda() for t in golden_triples]
-                negative_triples = ( batch['nh'], batch['nr'], batch['nt'] )
+                negative_triples = ( batch['nh'].flatten(), batch['nr'].flatten(), batch['nt'].flatten() )
                 negative_triples = [t.cuda() for t in negative_triples]
 
                 optimizer.zero_grad()
@@ -101,19 +101,27 @@ def main():
                 epoch_avg_loss += (float(loss.item()) / config.nbatchs)
                 writer.add_scalar('loss', loss.item(), step)
                 step += 1
-                pbar.set_description("loss={:.2f}".format(loss.item()/ config.nbatchs ))
+                pbar.set_description("loss={:.2f}".format(loss.item() ))
                 pbar.update(1)
 
         end_time = time.time()
 
         if epoch % 10 == 0:
+            dynamicKGE.eval()
             dynamicKGE.save_parameters(config.res_dir)
+            dynamicKGE.train()
+
+            if first_evaluate and epoch > 0:
+                first_evaluate = False
+                entity_emb, relation_emb = load_o_emb(config.res_dir, config.entity_total, config.relation_total, config.dim, input=True)
+                mr_filter, mr = test.test_link_prediction(config.test_list, set(config.train_list), entity_emb, relation_emb, config.norm)
+                writer.add_hparams(dict(config), {'hparam/mr': mr, 'hparam/mr_filter': mr_filter})
+                writer.flush()
 
         print('----------epoch avg loss: ' + str(epoch_avg_loss) + ' ----------')
         print('----------epoch training time: ' + str(end_time-start_time) + ' s --------\n')
 
     print('train ending...')
     dynamicKGE.save_parameters(config.res_dir)
-
-    evaluate(config)
+    evaluate(config, verbose=1)
 main()

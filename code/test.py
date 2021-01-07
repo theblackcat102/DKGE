@@ -56,7 +56,7 @@ def test_tail(golden_triple, train_set, entity_emb, relation_emb, norm):
     return res, res - sub
 
 
-def test_link_prediction(test_list, train_set, entity_emb, relation_emb, norm):
+def test_link_prediction(test_list, train_set, entity_emb, relation_emb, norm, verbose=0):
     test_total = len(test_list)
 
     l_mr = 0
@@ -66,16 +66,17 @@ def test_link_prediction(test_list, train_set, entity_emb, relation_emb, norm):
     r_mr_filter = 0
 
     for i, golden_triple in enumerate(test_list):
-        print('test ---' + str(i) + '--- triple')
-        print(i, end="\r")
         l_pos, l_filter_pos = test_head(golden_triple, train_set, entity_emb, relation_emb, norm)
         r_pos, r_filter_pos = test_tail(golden_triple, train_set, entity_emb, relation_emb, norm)  # position, 1-based
+        if verbose > 0:
+            print('test ---' + str(i) + '--- triple')
+            print(i, end="\r")
 
-        print(golden_triple, end=': ')
-        print('l_pos=' + str(l_pos), end=', ')
-        print('l_filter_pos=' + str(l_filter_pos), end=', ')
-        print('r_pos=' + str(r_pos), end=', ')
-        print('r_filter_pos=' + str(r_filter_pos), end='\n')
+            print(golden_triple, end=': ')
+            print('l_pos=' + str(l_pos), end=', ')
+            print('l_filter_pos=' + str(l_filter_pos), end=', ')
+            print('r_pos=' + str(r_pos), end=', ')
+            print('r_filter_pos=' + str(r_filter_pos), end='\n')
 
         l_mr += l_pos
         r_mr += r_pos
@@ -88,16 +89,18 @@ def test_link_prediction(test_list, train_set, entity_emb, relation_emb, norm):
 
     l_mr_filter /= test_total
     r_mr_filter /= test_total
+    if verbose > 0:
+        print('\t\t\tmean_rank\t\t\t')
+        print('head(raw)\t\t\t%.3f\t\t\t' % l_mr)
+        print('tail(raw)\t\t\t%.3f\t\t\t' % r_mr)
+        print('average(raw)\t\t\t%.3f\t\t\t' % ((l_mr + r_mr) / 2))
 
-    print('\t\t\tmean_rank\t\t\t')
-    print('head(raw)\t\t\t%.3f\t\t\t' % l_mr)
-    print('tail(raw)\t\t\t%.3f\t\t\t' % r_mr)
-    print('average(raw)\t\t\t%.3f\t\t\t' % ((l_mr + r_mr) / 2))
+        print('head(filter)\t\t\t%.3f\t\t\t' % l_mr_filter)
+        print('tail(filter)\t\t\t%.3f\t\t\t' % r_mr_filter)
+        print('average(filter)\t\t\t%.3f\t\t\t' % ((l_mr_filter + r_mr_filter) / 2))
 
-    print('head(filter)\t\t\t%.3f\t\t\t' % l_mr_filter)
-    print('tail(filter)\t\t\t%.3f\t\t\t' % r_mr_filter)
-    print('average(filter)\t\t\t%.3f\t\t\t' % ((l_mr_filter + r_mr_filter) / 2))
 
+    return (l_mr_filter + r_mr_filter) / 2, (l_mr + r_mr) / 2
 
 if __name__ == "__main__":
     from config import config

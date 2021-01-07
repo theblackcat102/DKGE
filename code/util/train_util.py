@@ -10,13 +10,18 @@ from torch.utils.data import Dataset
 
 def read_file(file_name):
     data = []  # [(h, r, t)]
+    is_freebase_dataset = False
+    if 'FB15' in file_name:
+        is_freebase_dataset = True
     with open(file_name, 'r') as f:
         lines = f.readlines()
         for line in lines:
             li = line.split()
             if len(li) == 3:
-                # h, r, t
-                data.append((int(li[0]), int(li[1]), int(li[2])))
+                if is_freebase_dataset:# h, r, t
+                    data.append((int(li[0]), int(li[1]), int(li[2])))
+                else: # h, t, r
+                    data.append((int(li[0]), int(li[2]), int(li[1])))
     return data
 
 
@@ -315,21 +320,39 @@ class GraphDataSet(Dataset):
             phs = phs.cpu()
             prs = prs.cpu()
             pts = pts.cpu()
+        if isinstance(phs, torch.Tensor):
+            phs = phs.numpy()
+            prs = prs.numpy()
+            pts = pts.numpy()
 
         self.mapping = Mapping(data_path)
         self.phs = phs
         self.prs = prs
         self.pts = pts
+        self.existing_head_mapping, self.existing_tail_mapping = defaultdict(list), defaultdict(list)
+        for idx in range(len(self.phs)):
+            key = str(phs[idx])+str(prs[idx])
+            self.existing_tail_mapping[key].append(pts[idx])
+
+            key = str(pts[idx])+str(prs[idx])
+            self.existing_head_mapping[key].append(phs[idx])
+
         self.entity_size = max(phs.max(), pts.max())
 
     def sample_negative(self, h, r, t):
         replace_head = random.random() > 0.5
-        tmp = random.randint(0, self.entity_size-1)
-        while tmp == h or tmp == r:
-            tmp = random.randint(0, self.entity_size-1)
         if replace_head:
-            return torch.IntTensor([tmp])[0].to(r.device), r, t
-        return h, r, torch.IntTensor([tmp])[0].to(r.device)
+            key = str(t)+str(r)
+            tmp = random.randint(0, self.entity_size-1)
+            while tmp in self.existing_head_mapping[key]:
+                tmp = random.randint(0, self.entity_size-1)
+            return tmp, r, t
+
+        key = str(h)+str(r)
+        tmp = random.randint(0, self.entity_size-1)
+        while tmp in self.existing_tail_mapping[key]:
+            tmp = random.randint(0, self.entity_size-1)
+        return h, r, tmp
 
 
     def __len__(self):
@@ -339,24 +362,18 @@ class GraphDataSet(Dataset):
         h, r, t = self.phs[index], self.prs[index], self.pts[index]
         nh, nr, nt = self.sample_negative(h, r, t)
         return {
-            'h': h,
-            'r': r,
-            't': t,
-            'nh': nh,
-            'nr': nr,
-            'nt': nt,
-            'h_tokens': torch.from_numpy(np.array(self.mapping.get_entity(int(h)))), 
-            'r_tokens': torch.from_numpy(np.array(self.mapping.get_relation(int(r)))),
-            't_tokens': torch.from_numpy(np.array(self.mapping.get_entity(int(t)))),
-            'nh_tokens': torch.from_numpy(np.array(self.mapping.get_entity(int(nh)))), 
-            'nr_tokens': torch.from_numpy(np.array(self.mapping.get_relation(int(nr)))),
-            'nt_tokens': torch.from_numpy(np.array(self.mapping.get_entity(int(nt)))),
+            'h': torch.tensor(h).long(),
+            'r': torch.tensor(r).long(),
+            't': torch.tensor(t).long(),
+            'nh': torch.tensor(nh).long(),
+            'nr': torch.tensor(nr).long(),
+            'nt': torch.tensor(nt).long()
         }
 
 
 if __name__ == '__main__':
     from torch.utils.data import DataLoader
-    dataset = GraphDataSet('cache/training_data_FB15K-237-2snapshot1_14055_236_30.pt', 'data/FB15K-237-2/snapshot1')
+    dataset = GraphDataSet('cache/training_data_FB15K-237-2snapshot1-ent_14054_299_30.pt', 'data/FB15K-237-2/snapshot1-ent')
     dataloader = DataLoader(dataset, batch_size=32)
     for batch in dataloader:
         print(batch['h'].shape)

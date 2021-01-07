@@ -53,10 +53,12 @@ class Mapping():
 
     def get_entity(self, idx):
         entity_id = self.id2entity[idx]
-
-        if not self.training:
+        name = '[UNK]'
+        if entity_id not in self.entity2wiki:
+            name = '[UNK]'
+        elif not self.training and 'label' in self.entity2wiki[entity_id]:
             name = self.entity2wiki[entity_id]['label']
-        else:
+        elif 'label' in self.entity2wiki[entity_id] and 'alternatives' in self.entity2wiki[entity_id]:
             name = random.choice([self.entity2wiki[entity_id]['label']]+\
                 self.entity2wiki[entity_id]['alternatives'])
 
@@ -66,7 +68,9 @@ class Mapping():
 
     def get_relation(self, idx):
         rel_id = self.id2relation[idx]
-        if not self.training:
+        if rel_id not in self.relation2wiki:
+            name = '[UNK]'
+        elif not self.training:
             name = self.relation2wiki[rel_id]['label']
         else:
             name = random.choice([self.relation2wiki[rel_id]['label']]+\
@@ -248,7 +252,7 @@ class DynamicKGE(nn.Module):
 
         with open(os.path.join(parameter_path, 'relation_o'), "w") as rel_f:
             rel_f.write(json.dumps(self.pr_o))
-        torch.save(self.state_dict(), 'all_parameters.pt')
+        torch.save(self.state_dict(), os.path.join(parameter_path, 'all_parameters.ckpt'))
 
     def compute_entity(self, ent_id, A):
         ent_id = ent_id.long()
