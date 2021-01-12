@@ -222,14 +222,21 @@ class DynamicKGE(nn.Module):
 
         with torch.no_grad():
             for idx in range(self.config.entity_total):
-                ent_id = torch.LongTensor([idx]).cuda()
-                A = self.config.entity_A[ent_id.cpu().numpy()].cuda()
+                ent_id = torch.LongTensor([idx])
+                A = self.config.entity_A[ent_id.cpu().numpy()]
+                if self.config.use_gpu:
+                    A = A.cuda()
+                    ent_id = ent_id.cuda()
                 output = self.compute_entity(ent_id, A)
                 self.pht_o[idx] = list(output.cpu().numpy().flatten().astype(float))
 
             for idx in range(self.config.relation_total):
-                rel_id = torch.LongTensor([idx]).cuda()
-                A = self.config.relation_A[rel_id.cpu().numpy()].cuda()
+                ent_id = torch.LongTensor([idx])
+                A = self.config.entity_A[ent_id.cpu().numpy()]
+                if self.config.use_gpu:
+                    A = A.cuda()
+                    ent_id = ent_id.cuda()
+
                 output = self.compute_relation(rel_id, A)
                 self.pr_o[idx] = list(output.cpu().numpy().flatten().astype(float))
 

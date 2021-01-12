@@ -17,12 +17,14 @@ parser.add_argument('-n', '--norm', type=int, dest="norm", help="normalization",
 parser.add_argument('-o', '--optim', type=str, dest="optim", help="optimizer", required=False, default="SGD")
 parser.add_argument('-p', '--path', type=str, dest="dataset", help="dataset path", required=False, default="YAGO-3SP/snapshot1")
 parser.add_argument('-t', '--test_mode', type=bool, dest="test_mode", help="if test mode on", required=False, default=False)
+parser.add_argument('-g', '--use_gpu', type=bool, dest="use_gpu", help="use GPU", required=False, default=True)
 parser.add_argument('-k', '--use_embedding', type=bool, dest="use_embedding", help="use individual embedding", required=False, default=False)
 parser.add_argument('-c', '--max_context', type=int, dest="max_context", help="max context", required=False, default=30)
 
 args = parser.parse_args()
 
 
+use_gpu = args.use_gpu
 dataset_v1 = args.dataset
 
 use_embedding = args.use_embedding
