@@ -8,7 +8,7 @@ from tqdm import tqdm
 from multiprocessing import Pool
 
 
-CRAWL = True
+CRAWL = False
 print('CRAWL ', CRAWL)
 def read_csv(filename_path):
     WD_id = []
@@ -165,10 +165,9 @@ def build_dbpedia_entity2wikidata(
                 params.append((key, url))
     random.shuffle(params)
 
-    with open('params_data.json', 'r') as f:
-        params = json.load(f)
-
-    params = params[:len(params)//2]
+    # with open('params_data.json', 'r') as f:
+    #     params = json.load(f)
+    # params = params[:len(params)//2]
     
     cnt = 0
     with Pool(6) as pool:

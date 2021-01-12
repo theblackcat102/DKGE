@@ -1,6 +1,6 @@
 import os
 
-def generate_train(datapath='code/data/DBpedia-3SP/snapshot1'):
+def generate_train(datapath='code/data/DBpedia-3SPv2/snapshot1'):
     id2entity = {}
     id2relation = {}
     with open(os.path.join(datapath, 'entity2id.txt')) as f:
