@@ -8,7 +8,7 @@ from tqdm import tqdm
 from multiprocessing import Pool
 
 
-CRAWL = False
+CRAWL = True
 print('CRAWL ', CRAWL)
 def read_csv(filename_path):
     WD_id = []
@@ -322,11 +322,13 @@ def download_dbpedia_json():
     with open('wiki_id2dbpedia.txt', 'r') as f:
         for line in f:
             wikidata_id, dbpedia_url = line.strip().split(',', 1)
-            params.append((wikidata_id, dbpedia_url))
+            params.append((dbpedia_url, dbpedia_url))
 
     results = {}
+    cnt = 0
+    print(params[:3])
     with Pool(4) as pool:
-        for result in tqdm(pool.imap(parse_dbpedia,params), dynamic_ncols=True, total=len(params)):
+        for result in tqdm(pool.imap(parse_dbpedia, params), dynamic_ncols=True, total=len(params)):
             key, result = result
             if len(result) < 3:
                 with open('failed_dbpedia_url.txt', 'a') as f:
