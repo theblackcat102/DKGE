@@ -316,7 +316,27 @@ def rebuild_relation2id(path):
         for key, idx in relation2id.items():
             f.write('{}\t{}\n'.format(key, idx))
 
+
+def download_dbpedia_json():
+    params = []
+    with open('wiki_id2dbpedia.txt', 'r') as f:
+        for line in f:
+            wikidata_id, dbpedia_url = line.strip().split(',', 1)
+            params.append((wikidata_id, dbpedia_url))
+
+    results = {}
+    with Pool(4) as pool:
+        for result in tqdm(pool.imap(parse_dbpedia,params), dynamic_ncols=True, total=len(params)):
+            key, result = result
+            if len(result) < 3:
+                with open('failed_dbpedia_url.txt', 'a') as f:
+                    f.write(key+'\n')
+            else:
+                results[ key ] = result
+                cnt += 1
+
 if __name__ == '__main__':
+    download_dbpedia_json()
     # with open('valid_entities_list.txt', 'r') as f:
     #     for line in tqdm(f.readlines()):
     #         parse_dbpedia(line.strip())
@@ -324,10 +344,10 @@ if __name__ == '__main__':
     # rebuild_entity2id('code/data/DBpedia-3SPv2/snapshot1')
     # rebuild_relation2id('code/data/DBpedia-3SPv2/snapshot1')
 
-    build_dbpedia_entity2wikidata(
-        entity2id_file = 'code/data/DBpedia-3SPv2/snapshot1/entity2id.txt',
-        output_file = 'code/data/DBpedia-3SPv2/snapshot1/entity2wikidata.json'
-    )
+    # build_dbpedia_entity2wikidata(
+    #     entity2id_file = 'code/data/DBpedia-3SPv2/snapshot1/entity2id.txt',
+    #     output_file = 'code/data/DBpedia-3SPv2/snapshot1/entity2wikidata.json'
+    # )
     # build_dbpedia_relation2wikidata(
     #         entity2id_file = 'code/data/DBpedia-3SPv2/snapshot1/relation2id.txt',
     #     output_file = 'code/data/DBpedia-3SPv2/snapshot1/relation2wikidata.json'
