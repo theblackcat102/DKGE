@@ -8,7 +8,7 @@ from tqdm import tqdm
 from multiprocessing import Pool
 
 
-CRAWL = True
+CRAWL = False
 print('CRAWL ', CRAWL)
 def read_csv(filename_path):
     WD_id = []
@@ -280,16 +280,11 @@ def download_dbpedia_json():
                 cnt += 1
 
 if __name__ == '__main__':
-    download_dbpedia_json()
 
-    # with open('valid_entities_list.txt', 'r') as f:
-    #     for line in tqdm(f.readlines()):
-    #         parse_dbpedia(line.strip())
-
-    # build_dbpedia_entity2wikidata(
-    #     entity2id_file = 'code/data/DBpedia-3SPv2/snapshot1/entity2id.txt',
-    #     output_file = 'code/data/DBpedia-3SPv2/snapshot1/entity2wikidata.json'
-    # )
+    build_dbpedia_entity2wikidata(
+        entity2id_file = 'code/data/DBpedia-3SPv2/snapshot1/entity2id.txt',
+        output_file = 'code/data/DBpedia-3SPv2/snapshot1/entity2wikidata.json'
+    )
     # build_dbpedia_relation2wikidata(
     #         entity2id_file = 'code/data/DBpedia-3SPv2/snapshot1/relation2id.txt',
     #     output_file = 'code/data/DBpedia-3SPv2/snapshot1/relation2wikidata.json'

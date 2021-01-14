@@ -3,6 +3,8 @@ import os
 from tqdm import tqdm
 import urllib
 import time
+from multiprocessing import Pool
+
 
 sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
 sparql.setReturnFormat(JSON)
@@ -31,7 +33,7 @@ def parse_results(wiki_data):
                     ?article schema:isPartOf <https://en.wikipedia.org/> . }}
         SERVICE <http://dbpedia.org/sparql> {{?dbpedia_id owl:sameAs ?Wikidata_id .?dbpedia_id dbo:wikiPageID ?wikipedia_id.}}
         }}""".format(wiki_data)
-    time.sleep(0.5)
+    time.sleep(1)
     outputs = []
     try:
         sparql.setQuery(statement)
@@ -46,9 +48,9 @@ def parse_results(wiki_data):
 
     return outputs
 
-if __name__ == "__main__":
-    from multiprocessing import Pool
-    query_files = [ 'xaa','xab','xac']
+
+def parse_parallel():
+    query_files = [ 'xab','xaa']
     params = []
     for query_file in query_files:
         with open(query_file, 'r') as f:
@@ -61,3 +63,54 @@ if __name__ == "__main__":
         for outputs in tqdm(pool.imap_unordered(parse_results, params), dynamic_ncols=True, total=len(params)):
             for output in outputs:
                 g.write('{},{}\n'.format(output[0], output[1]))
+
+
+def parse_property(property_id):
+    statement = """
+    PREFIX       wdt:  <http://www.wikidata.org/prop/direct/>
+    PREFIX  wikibase:  <http://wikiba.se/ontology#>
+    PREFIX        bd:  <http://www.bigdata.com/rdf#>
+
+    SELECT ?WikidataProp ?itemLabel ?DBpediaProp
+    WHERE
+    {{
+        wdt:{}  wdt:P1628  ?DBpediaProp .
+        FILTER ( CONTAINS ( str(?DBpediaProp) , 'dbpedia' ) ) .
+        SERVICE wikibase:label
+        {{ bd:serviceParam  wikibase:language  "en" }} .
+    }}
+    """.format(property_id)
+    time.sleep(1)
+    outputs = []
+    try:
+        sparql.setQuery(statement)
+        results = sparql.query().convert() 
+        for result in results["results"]["bindings"][:3]:
+            outputs.append((property_id , result['DBpediaProp']['value']))
+    except KeyboardInterrupt:
+        return outputs
+    except BaseException as e:
+        print(wiki_data, 'failed')
+        return outputs
+    return outputs
+
+
+def parse_prop_parallel():
+    query_files = [ 'all_properties.txt']
+    params = []
+    for query_file in query_files:
+        with open(query_file, 'r') as f:
+            for line in f:
+                wiki_data = line.strip()
+                if wiki_data not in exist_wikidatas:
+                    params.append(wiki_data)
+
+    with open('wiki_prop2dbpedia.txt', 'a') as g, Pool(3) as pool:
+        for outputs in tqdm(pool.imap_unordered(parse_property, params), dynamic_ncols=True, total=len(params)):
+            for output in outputs:
+                g.write('{},{}\n'.format(output[0], output[1].replace('ontology', 'property')))
+
+
+
+if __name__ == "__main__":
+    parse_prop_parallel()

@@ -1,6 +1,19 @@
 import os, glob
 import json
 import random
+import argparse
+
+TYPE_MAP = {
+    'subject': 'http://purl.org/dc/terms/subject',
+    'type': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'   
+}
+
+parser = argparse.ArgumentParser(description='add entity type to data')
+parser.add_argument('is_type_relation',  type=str, choices=['subject', 'type'],
+                    help='an integer for the accumulator')
+
+args = parser.parse_args()
+
 
 
 valid_entity_type = []
@@ -18,14 +31,11 @@ train2id_filename = 'train2id.txt'
 valid2id_filename = 'valid2id.txt'
 test2id_filename = 'test2id.txt'
 
-
 train_filename = 'train.txt'
 valid_filename = 'valid.txt'
 test_filename = 'test.txt'
 
-
-RDF_TYPE_NAME = 'http://purl.org/dc/terms/subject'
-RDF_TYPE_NAME = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
+RDF_TYPE_NAME = TYPE_MAP[args.is_type_relation]
 print(RDF_TYPE_NAME)
 
 entity2wikipedia = 'entity2wikidata.json'
