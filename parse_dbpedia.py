@@ -50,7 +50,7 @@ def parse_results(wiki_data):
 
 
 def parse_parallel():
-    query_files = [ 'xab','xaa']
+    query_files = [ 'xaa']
     params = []
     for query_file in query_files:
         with open(query_file, 'r') as f:
@@ -113,4 +113,4 @@ def parse_prop_parallel():
 
 
 if __name__ == "__main__":
-    parse_prop_parallel()
+    parse_parallel()
