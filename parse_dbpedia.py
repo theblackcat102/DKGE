@@ -16,7 +16,7 @@ if os.path.exists('wiki_id2dbpedia.txt'):
 
 
 if __name__ == "__main__":
-    query_file = 'xac'
+    query_file = 'xaa'
     print(query_file)
     with open(query_file, 'r') as f, open('wiki_id2dbpedia.txt', 'a') as g:
         for line in tqdm(f, dynamic_ncols=True):
@@ -39,11 +39,13 @@ if __name__ == "__main__":
                     SERVICE <http://dbpedia.org/sparql> {{?dbpedia_id owl:sameAs ?Wikidata_id .?dbpedia_id dbo:wikiPageID ?wikipedia_id.}}
                     }}""".format(wiki_data)
                 time.sleep(0.5)
-                sparql.setQuery(statement)
                 try:
+                    sparql.setQuery(statement)
                     results = sparql.query().convert() 
                     for result in results["results"]["bindings"][:3]:
                         exist_wikidatas.append(wiki_data)
                         g.write('{},{}\n'.format(wiki_data , result['dbpedia_id']['value']))
-                except urllib.error.HTTPError:
+                except KeyboardInterrupt:
+                    exit(0)
+                except BaseException as e:
                     print(wiki_data, 'failed')
