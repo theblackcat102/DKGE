@@ -15,37 +15,49 @@ if os.path.exists('wiki_id2dbpedia.txt'):
             exist_wikidatas.append(wiki_data)
 
 
+def parse_results(wiki_data):
+    statement = """PREFIX dbo: <http://dbpedia.org/ontology/>
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX wd: <http://www.wikidata.org/entity/>
+
+        SELECT DISTINCT ?lang ?name ?dbpedia_id WHERE {{
+        ?article schema:about wd:{} ;
+                    schema:inLanguage ?lang ;
+                    schema:name ?name ;
+                    schema:isPartOf [ wikibase:wikiGroup "wikipedia" ] .
+        FILTER(?lang in ('en')) .
+        FILTER (!CONTAINS(?name, ':')) .
+        OPTIONAL {{ ?article schema:about ?Wikidata_id . 
+                    ?article schema:isPartOf <https://en.wikipedia.org/> . }}
+        SERVICE <http://dbpedia.org/sparql> {{?dbpedia_id owl:sameAs ?Wikidata_id .?dbpedia_id dbo:wikiPageID ?wikipedia_id.}}
+        }}""".format(wiki_data)
+    time.sleep(0.5)
+    outputs = []
+    try:
+        sparql.setQuery(statement)
+        results = sparql.query().convert() 
+        for result in results["results"]["bindings"][:3]:
+            outputs.append((wiki_data , result['dbpedia_id']['value']))
+    except KeyboardInterrupt:
+        return outputs
+    except BaseException as e:
+        print(wiki_data, 'failed')
+        return outputs
+
+    return outputs
+
 if __name__ == "__main__":
-    query_file = 'xaa'
-    print(query_file)
-    with open(query_file, 'r') as f, open('wiki_id2dbpedia.txt', 'a') as g:
-        for line in tqdm(f, dynamic_ncols=True):
-            wiki_data, freq = line.strip().split(',',1)
+    from multiprocessing import Pool
+    query_files = [ 'xaa','xab','xac']
+    params = []
+    for query_file in query_files:
+        with open(query_file, 'r') as f:
+            for line in f:
+                wiki_data, freq = line.strip().split(',',1)
+                if wiki_data not in exist_wikidatas:
+                    params.append(wiki_data)
 
-            if wiki_data not in exist_wikidatas:
-                statement = """PREFIX dbo: <http://dbpedia.org/ontology/>
-                    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-                    PREFIX wd: <http://www.wikidata.org/entity/>
-
-                    SELECT DISTINCT ?lang ?name ?dbpedia_id WHERE {{
-                    ?article schema:about wd:{} ;
-                                schema:inLanguage ?lang ;
-                                schema:name ?name ;
-                                schema:isPartOf [ wikibase:wikiGroup "wikipedia" ] .
-                    FILTER(?lang in ('en')) .
-                    FILTER (!CONTAINS(?name, ':')) .
-                    OPTIONAL {{ ?article schema:about ?Wikidata_id . 
-                                ?article schema:isPartOf <https://en.wikipedia.org/> . }}
-                    SERVICE <http://dbpedia.org/sparql> {{?dbpedia_id owl:sameAs ?Wikidata_id .?dbpedia_id dbo:wikiPageID ?wikipedia_id.}}
-                    }}""".format(wiki_data)
-                time.sleep(0.5)
-                try:
-                    sparql.setQuery(statement)
-                    results = sparql.query().convert() 
-                    for result in results["results"]["bindings"][:3]:
-                        exist_wikidatas.append(wiki_data)
-                        g.write('{},{}\n'.format(wiki_data , result['dbpedia_id']['value']))
-                except KeyboardInterrupt:
-                    exit(0)
-                except BaseException as e:
-                    print(wiki_data, 'failed')
+    with open('wiki_id2dbpedia.txt', 'a') as g, Pool(3) as pool:
+        for outputs in tqdm(pool.imap_unordered(parse_results, params), dynamic_ncols=True, total=len(params)):
+            for output in outputs:
+                g.write('{},{}\n'.format(output[0], output[1]))
